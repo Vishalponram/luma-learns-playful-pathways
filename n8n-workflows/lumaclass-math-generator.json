@@ -1,0 +1,172 @@
+{
+  "name": "Luma's Class - Math Question Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/generate-math-question",
+        "options": {}
+      },
+      "id": "webhook-math-trigger",
+      "name": "Math Question Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "math-questions"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "level",
+              "value": "={{ $json.level || 1 }}"
+            },
+            {
+              "name": "question_type",
+              "value": "={{ $json.question_type || 'counting' }}"
+            },
+            {
+              "name": "difficulty",
+              "value": "={{ $json.difficulty || 'easy' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-parameters",
+      "name": "Extract Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-3.5-turbo",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 500
+        },
+        "messages": {
+          "chatInput": [
+            {
+              "role": "system",
+              "content": "You are Luma, a friendly AI teacher for kids aged 4-8. Create engaging math questions with visual elements. Always respond in JSON format with the exact structure requested."
+            },
+            {
+              "role": "user",
+              "content": "Create a {{ $node['Extract Parameters'].json.question_type }} math question for level {{ $node['Extract Parameters'].json.level }}.\n\nLevel 1: Simple counting (1-5 objects)\nLevel 2: Addition (numbers 1-4)\nLevel 3+: Subtraction (numbers 1-8)\n\nRequirements:\n- Use visual elements (emojis for objects like 🌳🍎🐝🌸🐣⭐🦋🐧🎈🍓)\n- Make it age-appropriate and fun\n- Include encouraging language\n\nRespond with this exact JSON structure:\n{\n  \"question\": \"Question text here\",\n  \"visual_element\": \"🌳\",\n  \"left_count\": 3,\n  \"right_count\": 2,\n  \"correct_answer\": 5,\n  \"explanation\": \"Encouraging explanation\",\n  \"difficulty_level\": \"{{ $node['Extract Parameters'].json.level }}\",\n  \"question_type\": \"{{ $node['Extract Parameters'].json.question_type }}\"\n}"
+            }
+          ]
+        }
+      },
+      "id": "generate-question-llm",
+      "name": "Generate Question with LLM",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the LLM response and validate\nconst llmResponse = $input.first().json.message.content;\n\ntry {\n  // Parse JSON response from LLM\n  const questionData = JSON.parse(llmResponse);\n  \n  // Validate required fields\n  const requiredFields = ['question', 'visual_element', 'correct_answer', 'explanation'];\n  const missingFields = requiredFields.filter(field => !questionData[field]);\n  \n  if (missingFields.length > 0) {\n    throw new Error(`Missing required fields: ${missingFields.join(', ')}`);\n  }\n  \n  // Add metadata\n  questionData.generated_at = new Date().toISOString();\n  questionData.id = `math_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n  questionData.subject = 'mathematics';\n  questionData.target_age = '4-8 years';\n  \n  // Ensure numerical values are numbers\n  questionData.left_count = parseInt(questionData.left_count) || 0;\n  questionData.right_count = parseInt(questionData.right_count) || 0;\n  questionData.correct_answer = parseInt(questionData.correct_answer);\n  questionData.difficulty_level = parseInt(questionData.difficulty_level) || 1;\n  \n  return [{ json: questionData }];\n  \n} catch (error) {\n  // Fallback question if LLM fails\n  const fallbackQuestion = {\n    id: `math_fallback_${Date.now()}`,\n    question: \"Count the trees! How many do you see?\",\n    visual_element: \"🌳\",\n    left_count: 3,\n    right_count: 0,\n    correct_answer: 3,\n    explanation: \"Great job counting! Keep practicing!\",\n    difficulty_level: 1,\n    question_type: \"counting\",\n    subject: \"mathematics\",\n    target_age: \"4-8 years\",\n    generated_at: new Date().toISOString(),\n    error: error.message,\n    fallback_used: true\n  };\n  \n  return [{ json: fallbackQuestion }];\n}"
+      },
+      "id": "process-response",
+      "name": "Process LLM Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "return-response",
+      "name": "Return Question",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Math Question Request": {
+      "main": [
+        [
+          {
+            "node": "Extract Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Parameters": {
+      "main": [
+        [
+          {
+            "node": "Generate Question with LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Question with LLM": {
+      "main": [
+        [
+          {
+            "node": "Process LLM Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process LLM Response": {
+      "main": [
+        [
+          {
+            "node": "Return Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T10:00:00.000Z",
+      "id": "education",
+      "name": "education"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1"
+}
