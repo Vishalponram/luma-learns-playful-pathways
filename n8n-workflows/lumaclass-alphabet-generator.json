@@ -1,0 +1,172 @@
+{
+  "name": "Luma's Class - Alphabet Question Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/generate-alphabet-question",
+        "options": {}
+      },
+      "id": "webhook-alphabet-trigger",
+      "name": "Alphabet Question Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "alphabet-questions"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "level",
+              "value": "={{ $json.level || 1 }}"
+            },
+            {
+              "name": "question_type",
+              "value": "={{ $json.question_type || 'identify-letter' }}"
+            },
+            {
+              "name": "target_letters",
+              "value": "={{ $json.target_letters || 'A,B,C,D,E,F' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-alphabet-parameters",
+      "name": "Extract Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-3.5-turbo",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 600
+        },
+        "messages": {
+          "chatInput": [
+            {
+              "role": "system",
+              "content": "You are Luma, a friendly AI teacher for kids aged 4-8. Create engaging alphabet questions with visual elements and fun words. Always respond in JSON format with the exact structure requested."
+            },
+            {
+              "role": "user",
+              "content": "Create an {{ $node['Extract Parameters'].json.question_type }} alphabet question for level {{ $node['Extract Parameters'].json.level }}.\n\nAvailable letters: {{ $node['Extract Parameters'].json.target_letters }}\n\nQuestion Types:\n- Level 1: identify-letter (show picture/word, ask for letter)\n- Level 2: identify-word (show letter, ask for word)\n- Level 3+: match-letter-word (match letter with correct word)\n\nUse these letter-word-emoji combinations:\nA-Apple-🍎, B-Ball-⚽, C-Cat-🐱, D-Dog-🐶, E-Elephant-🐘, F-Fish-🐠, G-Grapes-🍇, H-House-🏠, I-Ice cream-🍦, J-Juice-🧃, K-Kite-🪁, L-Lion-🦁, M-Moon-🌙, N-Nest-🪺, O-Orange-🍊, P-Pizza-🍕, Q-Queen-👑, R-Rainbow-🌈, S-Sun-☀️, T-Tree-🌳, U-Umbrella-☂️, V-Violin-🎻, W-Whale-🐋, X-Xylophone-🎹, Y-Yellow-💛, Z-Zebra-🦓\n\nRespond with this exact JSON structure:\n{\n  \"question\": \"Question text here\",\n  \"letter\": \"A\",\n  \"word\": \"Apple\",\n  \"emoji\": \"🍎\",\n  \"options\": [\"A\", \"B\", \"C\", \"D\"],\n  \"correct_answer\": \"A\",\n  \"explanation\": \"Encouraging explanation\",\n  \"difficulty_level\": \"{{ $node['Extract Parameters'].json.level }}\",\n  \"question_type\": \"{{ $node['Extract Parameters'].json.question_type }}\"\n}"
+            }
+          ]
+        }
+      },
+      "id": "generate-alphabet-llm",
+      "name": "Generate Alphabet Question",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the LLM response and validate\nconst llmResponse = $input.first().json.message.content;\n\ntry {\n  // Parse JSON response from LLM\n  const questionData = JSON.parse(llmResponse);\n  \n  // Validate required fields\n  const requiredFields = ['question', 'letter', 'word', 'emoji', 'options', 'correct_answer'];\n  const missingFields = requiredFields.filter(field => !questionData[field]);\n  \n  if (missingFields.length > 0) {\n    throw new Error(`Missing required fields: ${missingFields.join(', ')}`);\n  }\n  \n  // Validate options array\n  if (!Array.isArray(questionData.options) || questionData.options.length !== 4) {\n    throw new Error('Options must be an array of 4 items');\n  }\n  \n  // Add metadata\n  questionData.generated_at = new Date().toISOString();\n  questionData.id = `alphabet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n  questionData.subject = 'alphabet';\n  questionData.target_age = '4-8 years';\n  questionData.difficulty_level = parseInt(questionData.difficulty_level) || 1;\n  \n  // Ensure letter is uppercase\n  questionData.letter = questionData.letter.toUpperCase();\n  \n  return [{ json: questionData }];\n  \n} catch (error) {\n  // Fallback question if LLM fails\n  const fallbackQuestion = {\n    id: `alphabet_fallback_${Date.now()}`,\n    question: \"Which letter does Apple start with?\",\n    letter: \"A\",\n    word: \"Apple\",\n    emoji: \"🍎\",\n    options: [\"A\", \"B\", \"C\", \"D\"],\n    correct_answer: \"A\",\n    explanation: \"Great job! A is for Apple! 🍎\",\n    difficulty_level: 1,\n    question_type: \"identify-letter\",\n    subject: \"alphabet\",\n    target_age: \"4-8 years\",\n    generated_at: new Date().toISOString(),\n    error: error.message,\n    fallback_used: true\n  };\n  \n  return [{ json: fallbackQuestion }];\n}"
+      },
+      "id": "process-alphabet-response",
+      "name": "Process Alphabet Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "return-alphabet-response",
+      "name": "Return Alphabet Question",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Alphabet Question Request": {
+      "main": [
+        [
+          {
+            "node": "Extract Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Parameters": {
+      "main": [
+        [
+          {
+            "node": "Generate Alphabet Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Alphabet Question": {
+      "main": [
+        [
+          {
+            "node": "Process Alphabet Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Alphabet Response": {
+      "main": [
+        [
+          {
+            "node": "Return Alphabet Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T10:00:00.000Z",
+      "id": "education",
+      "name": "education"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1"
+}
