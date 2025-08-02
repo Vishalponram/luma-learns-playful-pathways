@@ -46,7 +46,7 @@ const Index = () => {
         <div className="text-center mb-8">
           <h1 className="text-5xl md:text-6xl font-bold text-foreground mb-4">
             <span className="bg-gradient-primary bg-clip-text text-transparent">
-              Luma Learns
+              Luma's Class
             </span>
           </h1>
           <div className="w-24 h-24 mx-auto mb-6">
